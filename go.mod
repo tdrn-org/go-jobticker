@@ -3,7 +3,7 @@ module github.com/tdrn-org/go-jobticker
 go 1.26.5
 
 require (
-	github.com/adhocore/gronx v1.20.3
+	github.com/adhocore/gronx v1.20.4
 	github.com/stretchr/testify v1.12.1
 )
 
