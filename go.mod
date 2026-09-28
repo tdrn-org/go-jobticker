@@ -1,6 +1,8 @@
 module github.com/tdrn-org/go-jobticker
 
-go 1.26.5
+go 1.26
+
+toolchain go1.27.1
 
 require (
 	github.com/adhocore/gronx v1.20.4
