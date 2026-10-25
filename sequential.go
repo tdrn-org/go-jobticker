@@ -13,6 +13,10 @@ import (
 	"log/slog"
 	"sync"
 	"time"
+
+	tracehelper "github.com/tdrn-org/go-jobticker/internal/trace"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // SequentialQueue defines a simple sequential job ticker. Jobs are
@@ -25,6 +29,7 @@ type SequentialQueue struct {
 	jobs       []JobFunc
 	cancel     context.CancelFunc
 	logger     *slog.Logger
+	tracer     *tracehelper.Tracer
 	shutdownWG sync.WaitGroup
 	mutex      sync.Mutex
 }
@@ -43,6 +48,7 @@ func StartSequential(ctx context.Context, schedule, deadline time.Duration, jobs
 		jobs:     append([]JobFunc{}, jobs...),
 		cancel:   cancel,
 		logger:   logger,
+		tracer:   tracehelper.NewTracer[SequentialQueue](trace.WithInstrumentationAttributes(attribute.String("jobticker", schedule.String()))),
 	}
 	q.shutdownWG.Go(func() {
 		q.run(cancelCtx)
@@ -68,12 +74,20 @@ func (q *SequentialQueue) runJobs(ctx context.Context, tick time.Time) {
 	deadlineCtx, cancel := context.WithDeadline(ctx, tick.Add(q.deadline))
 	defer cancel()
 	for _, job := range jobs {
-		err := job(deadlineCtx, last, tick)
-		if err != nil {
-			q.logger.Warn("job failure", slog.Any("err", err))
-		}
+		q.runJob(deadlineCtx, job, last, tick)
 	}
 	q.postJobs(tick)
+}
+
+func (q *SequentialQueue) runJob(ctx context.Context, job JobFunc, last, tick time.Time) {
+	traceCtx, span := q.tracer.StartInternal(ctx)
+	defer span.End()
+
+	err := job(traceCtx, last, tick)
+	if err != nil {
+		q.logger.Warn("job failure", slog.Any("err", err))
+	}
+	tracehelper.SetStatus(span, err)
 }
 
 func (q *SequentialQueue) preJobs(tick time.Time) ([]JobFunc, time.Time) {
